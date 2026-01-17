@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vana-Drishti: Precision Afforestation Monitoring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Mapbox/Leaflet styles would go here in production -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        
+        /* Map Pattern for Satellite Simulation */
+        .satellite-bg {
+            background-color: #3f6212;
+            background-image: 
+                linear-gradient(rgba(0,0,0,0.3) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.3) 1px, transparent 1px);
+            background-size: 100px 100px;
+        }
+
+        .loader-ring {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+        }
+        .loader-ring:after {
+            content: " ";
+            display: block;
+            width: 16px;
+            height: 16px;
+            margin: 2px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            border-color: #10b981 transparent #10b981 transparent;
+            animation: ring 1.2s linear infinite;
+        }
+        @keyframes ring { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation -->
+    <header class="h-14 bg-slate-900 border-b border-slate-700 flex items-center justify-between px-4 shrink-0 z-20">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-emerald-600 rounded flex items-center justify-center font-bold text-white">V</div>
+            <div>
+                <h1 class="font-semibold text-sm tracking-wide text-slate-100">VANA-DRISHTI AI</h1>
+                <p class="text-[10px] text-slate-400">Odisha Forest Dept • Precision Forestry v2.4</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <div class="hidden md:flex items-center bg-slate-800 rounded px-3 py-1.5 border border-slate-700">
+                <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse mr-2"></div>
+                <span class="text-xs font-mono text-emerald-400">SYSTEM READY</span>
+            </div>
+            <button class="p-2 hover:bg-slate-800 rounded text-slate-400 transition">
+                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Left Sidebar: Controls -->
+        <aside class="w-72 bg-slate-900 border-r border-slate-700 flex flex-col z-10 shadow-xl">
+            <div class="p-4 border-b border-slate-800">
+                <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Target Sector</label>
+                <select id="sectorSelect" class="mt-1 w-full bg-slate-800 border border-slate-600 text-sm rounded p-2 focus:border-emerald-500 focus:outline-none text-slate-200">
+                    <option value="debadihi">Debadihi VF (Block A)</option>
+                    <option value="benkmura">Benkmura VF (Block B)</option>
+                </select>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                
+                <!-- Pipeline Steps -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">Processing Pipeline</h3>
+                    <div class="space-y-2">
+                        <div class="relative pl-4 border-l-2 border-slate-700 hover:border-blue-500 transition group">
+                            <button onclick="app.runOp1()" class="w-full text-left">
+                                <div class="text-xs font-semibold text-slate-300 group-hover:text-white">1. Pit Detection (OP1)</div>
+                                <div class="text-[10px] text-slate-500">Identify pre-planting coordinates</div>
+                            </button>
+                            <div id="status-op1" class="absolute right-0 top-1 opacity-0 transition">✅</div>
+                        </div>
+
+                        <div class="relative pl-4 border-l-2 border-slate-700 hover:border-amber-500 transition group">
+                            <button onclick="app.alignImagery()" class="w-full text-left">
+                                <div class="text-xs font-semibold text-slate-300 group-hover:text-white">2. Align Imagery</div>
+                                <div class="text-[10px] text-slate-500">Register OP3 drone orthomosaic</div>
+                            </button>
+                            <div id="status-align" class="absolute right-0 top-1 opacity-0 transition">✅</div>
+                        </div>
+
+                        <div class="relative pl-4 border-l-2 border-slate-700 hover:border-emerald-500 transition group">
+                            <button onclick="app.analyzeSurvival()" class="w-full text-left">
+                                <div class="text-xs font-semibold text-slate-300 group-hover:text-white">3. Survival Analysis</div>
+                                <div class="text-[10px] text-slate-500">Compute NDVI/Green Index</div>
+                            </button>
+                            <div id="status-analyze" class="absolute right-0 top-1 opacity-0 transition">✅</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Widget -->
+                <div class="bg-slate-800 rounded-lg p-3 border border-slate-700">
+                    <h4 class="text-[10px] font-bold text-slate-400 uppercase mb-2">Real-time Telemetry</h4>
+                    <div class="grid grid-cols-2 gap-3 mb-2">
+                        <div>
+                            <div class="text-2xl font-mono font-bold text-white" id="val-pits">0</div>
+                            <div class="text-[9px] text-slate-400 uppercase">Pits Detected</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-mono font-bold text-emerald-400" id="val-survival">--%</div>
+                            <div class="text-[9px] text-slate-400 uppercase">Survival Rate</div>
+                        </div>
+                    </div>
+                    <div class="h-1.5 w-full bg-slate-700 rounded-full overflow-hidden">
+                        <div id="bar-survival" class="h-full bg-emerald-500 w-0 transition-all duration-1000"></div>
+                    </div>
+                    <div class="flex justify-between mt-1 text-[9px] text-slate-400">
+                        <span>Casualties: <span id="val-dead" class="text-slate-200 font-bold">0</span></span>
+                        <span>Threshold: <30</span>
+                    </div>
+                </div>
+
+                <!-- Casualty List (Hidden until analysis) -->
+                <div id="casualty-list-container" class="hidden">
+                    <h3 class="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-2">Casualty Coordinates</h3>
+                    <div class="bg-slate-950 rounded border border-red-900/30 p-2 max-h-32 overflow-y-auto font-mono text-[9px]" id="casualty-list-content">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+
+                <!-- Export Actions -->
+                <div>
+                    <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Data Export</h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="app.export('kml')" class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded py-2 text-xs font-medium transition">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                            KML (Earth)
+                        </button>
+                        <button onclick="app.export('csv')" class="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded py-2 text-xs font-medium transition">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                            CSV Report
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Console Log Panel -->
+            <div class="h-24 bg-black border-t border-slate-700 p-2 font-mono text-[10px] overflow-y-auto" id="console-log">
+                <div class="text-green-500">root@odisha-forest:~# init system</div>
+                <div class="text-slate-400">> System initialized. Ready for dataset.</div>
+            </div>
+        </aside>
+
+        <!-- Map Visualization Area -->
+        <main class="flex-1 relative bg-slate-900 cursor-default overflow-hidden group">
+            
+            <!-- Map Layer -->
+            <div id="map-container" class="w-full h-full relative satellite-bg transition-transform duration-200 ease-out origin-center">
+                <canvas id="mainCanvas" class="absolute inset-0"></canvas>
+            </div>
+
+            <!-- Overlays -->
+            <div class="absolute top-4 left-4 right-4 flex justify-center pointer-events-none">
+                <div class="bg-slate-900/90 backdrop-blur border border-slate-700 rounded-full p-1 flex gap-1 pointer-events-auto shadow-2xl">
+                    <button onclick="app.setLayer('op1')" id="btn-layer-op1" class="px-4 py-1.5 rounded-full text-xs font-medium bg-slate-700 text-white shadow">Pits (OP1)</button>
+                    <button onclick="app.setLayer('op3')" id="btn-layer-op3" class="px-4 py-1.5 rounded-full text-xs font-medium text-slate-400 hover:text-white">Growth (OP3)</button>
+                </div>
+            </div>
+
+            <!-- Zoom Controls -->
+            <div class="absolute bottom-6 right-6 flex flex-col gap-2">
+                <button onclick="app.zoomIn()" class="w-10 h-10 bg-slate-800 text-white rounded shadow-lg border border-slate-700 hover:bg-slate-700 flex items-center justify-center text-xl">+</button>
+                <button onclick="app.zoomOut()" class="w-10 h-10 bg-slate-800 text-white rounded shadow-lg border border-slate-700 hover:bg-slate-700 flex items-center justify-center text-xl">-</button>
+            </div>
+
+            <!-- Mouse Info -->
+            <div class="absolute bottom-6 left-6 bg-slate-900/80 backdrop-blur px-3 py-1.5 rounded border border-slate-700 text-[10px] font-mono text-slate-300">
+                <span id="coord-display">LAT: 00.00000 | LNG: 00.00000</span>
+            </div>
+            
+            <!-- Loading Overlay -->
+            <div id="processing-overlay" class="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center hidden">
+                <div class="loader-ring"></div>
+                <div class="mt-4 text-sm font-medium text-emerald-400" id="process-text">Processing Imagery...</div>
+            </div>
+
+            <!-- Tooltip -->
+            <div id="tooltip" class="absolute hidden bg-slate-800 border border-slate-600 p-2 rounded shadow-xl z-50 pointer-events-none">
+                <div class="text-xs font-bold text-white mb-1" id="tt-id">Patch #1024</div>
+                <div class="text-[10px] text-slate-300" id="tt-status">Status: Alive</div>
+                <div class="text-[10px] text-slate-400 font-mono mt-1" id="tt-loc">21.45, 84.12</div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        class AfforestationApp {
+            constructor() {
+                this.canvas = document.getElementById('mainCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.width = 0;
+                this.height = 0;
+                this.scale = 1;
+                this.offsetX = 0;
+                this.offsetY = 0;
+                this.isDragging = false;
+                this.lastX = 0;
+                this.lastY = 0;
+                
+                // GIS Data Simulation
+                this.baseLat = 21.4981;
+                this.baseLng = 84.1235;
+                this.patches = [];
+                this.layer = 'op1'; // op1 or op3
+                this.gridSize = 6; // 6x6 grid
+                this.patchSize = 150; // pixels
+                
+                this.init();
+                this.setupEvents();
+            }
+
+            log(msg, type='info') {
+                const consoleEl = document.getElementById('console-log');
+                const div = document.createElement('div');
+                const timestamp = new Date().toLocaleTimeString('en-US', {hour12:false});
+                div.className = type === 'error' ? 'text-red-400' : (type === 'success' ? 'text-emerald-400' : 'text-slate-300');
+                div.innerHTML = `<span class="opacity-50">[${timestamp}]</span> ${msg}`;
+                consoleEl.appendChild(div);
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+
+            init() {
+                this.resize();
+                // Generate Virtual Grid
+                for (let r = 0; r < this.gridSize; r++) {
+                    for (let c = 0; c < this.gridSize; c++) {
+                        // Simulate data: 25-30 pits per patch
+                        const pits = [];
+                        const pitCount = 25 + Math.floor(Math.random() * 6);
+                        for(let k=0; k<pitCount; k++) {
+                            pits.push({
+                                x: (c * this.patchSize) + 10 + Math.random() * (this.patchSize - 20),
+                                y: (r * this.patchSize) + 10 + Math.random() * (this.patchSize - 20),
+                                // SIMULATION UPDATE: High survival rate (97.5%) to ensure <30 total casualties
+                                alive: Math.random() > 0.025 
+                            });
+                        }
+                        
+                        this.patches.push({
+                            id: `P-${r}-${c}`,
+                            row: r, col: c,
+                            x: c * this.patchSize,
+                            y: r * this.patchSize,
+                            pits: pits,
+                            analyzed: false
+                        });
+                    }
+                }
+                
+                // Map is centered in resize()
+                this.draw();
+            }
+
+            resize() {
+                const parent = this.canvas.parentElement;
+                this.canvas.width = parent.clientWidth;
+                this.canvas.height = parent.clientHeight;
+                this.width = parent.clientWidth;
+                this.height = parent.clientHeight;
+                
+                // Enforce Fixed Position: Always Center the Grid
+                this.offsetX = (this.width - (this.gridSize * this.patchSize)) / 2;
+                this.offsetY = (this.height - (this.gridSize * this.patchSize)) / 2;
+                
+                this.draw();
+            }
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.width, this.height);
+                this.ctx.save();
+                this.ctx.translate(this.offsetX, this.offsetY);
+                this.ctx.scale(this.scale, this.scale);
+
+                // Draw Grid
+                this.patches.forEach(p => {
+                    // Patch Border
+                    this.ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+                    this.ctx.lineWidth = 1;
+                    this.ctx.strokeRect(p.x, p.y, this.patchSize, this.patchSize);
+                    
+                    // Patch ID
+                    this.ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    this.ctx.font = '10px monospace';
+                    this.ctx.fillText(p.id, p.x + 5, p.y + 15);
+
+                    // Draw Data Points
+                    if (this.layer === 'op1') {
+                        // Show Pits (Blue)
+                        p.pits.forEach(pit => {
+                            this.ctx.fillStyle = '#3b82f6';
+                            this.ctx.beginPath();
+                            this.ctx.arc(pit.x, pit.y, 2.5, 0, Math.PI*2);
+                            this.ctx.fill();
+                        });
+                    } else if (this.layer === 'op3' && p.analyzed) {
+                        // Show Alive (Green) / Dead (Red)
+                        p.pits.forEach(pit => {
+                            this.ctx.fillStyle = pit.alive ? '#10b981' : '#ef4444';
+                            this.ctx.beginPath();
+                            this.ctx.arc(pit.x, pit.y, pit.alive ? 3 : 4, 0, Math.PI*2);
+                            this.ctx.fill();
+                            // Glow for dead
+                            if(!pit.alive) {
+                                this.ctx.shadowBlur = 4;
+                                this.ctx.shadowColor = '#ef4444';
+                                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                                this.ctx.lineWidth = 1.5;
+                                this.ctx.stroke();
+                                this.ctx.shadowBlur = 0;
+                            }
+                        });
+                    }
+                });
+
+                this.ctx.restore();
+            }
+
+            // --- Pipeline Simulation ---
+
+            async runOp1() {
+                this.showLoader("Detecting Pits (Hough Transform)...");
+                this.log("Starting OP1 Analysis on 36 patches...");
+                await this.wait(1500);
+                
+                // Update stats
+                const totalPits = this.patches.reduce((acc, p) => acc + p.pits.length, 0);
+                document.getElementById('val-pits').innerText = totalPits;
+                
+                document.getElementById('status-op1').style.opacity = '1';
+                this.setLayer('op1');
+                this.hideLoader();
+                this.log(`OP1 Complete. ${totalPits} pits identified.`, 'success');
+            }
+
+            async alignImagery() {
+                this.showLoader("Aligning Orthomosaic (SIFT/RANSAC)...");
+                this.log("Loading OP3 Orthomosaic...");
+                this.log("Extracting features (SIFT)...");
+                await this.wait(2000);
+                this.log("Geometric transformation applied. RMSE: 0.4px", 'success');
+                document.getElementById('status-align').style.opacity = '1';
+                this.hideLoader();
+            }
+
+            async analyzeSurvival() {
+                this.showLoader("Calculating Green Index (ExG)...");
+                this.log("Classifying vegetation pixels...");
+                await this.wait(1500);
+                
+                let alive = 0, dead = 0;
+                let casualtyListHTML = "";
+
+                this.patches.forEach(p => {
+                    p.analyzed = true;
+                    p.pits.forEach((pit, idx) => {
+                        if (pit.alive) {
+                            alive++; 
+                        } else {
+                            dead++;
+                            const geo = this.getGeoCoords(p.x + pit.x, p.y + pit.y);
+                            casualtyListHTML += `
+                                <div class="flex justify-between border-b border-white/10 py-1 last:border-0">
+                                    <span class="text-slate-400">${p.id}-${idx}</span>
+                                    <span class="text-red-300 text-right">${geo.lat}, ${geo.lng}</span>
+                                </div>`;
+                        }
+                    });
+                });
+
+                const total = alive + dead;
+                const pct = ((alive/total)*100).toFixed(1);
+                
+                document.getElementById('val-survival').innerText = pct + '%';
+                document.getElementById('bar-survival').style.width = pct + '%';
+                
+                const deadEl = document.getElementById('val-dead');
+                deadEl.innerText = dead;
+                // Threshold color logic
+                if (dead < 30) {
+                    deadEl.className = "text-emerald-400 font-bold";
+                } else {
+                    deadEl.className = "text-red-500 font-bold animate-pulse";
+                }
+
+                document.getElementById('status-analyze').style.opacity = '1';
+                
+                // Populate casualty list
+                document.getElementById('casualty-list-container').classList.remove('hidden');
+                document.getElementById('casualty-list-content').innerHTML = casualtyListHTML || "<div class='text-slate-500 italic'>No casualties detected.</div>";
+
+                this.setLayer('op3');
+                this.hideLoader();
+                this.log(`Analysis Complete. Casualties: ${dead}. Survival: ${pct}%`, 'success');
+            }
+
+            // --- Helpers ---
+
+            setLayer(l) {
+                this.layer = l;
+                document.getElementById('btn-layer-op1').className = l==='op1' ? 'px-4 py-1.5 rounded-full text-xs font-medium bg-slate-700 text-white shadow' : 'px-4 py-1.5 rounded-full text-xs font-medium text-slate-400 hover:text-white';
+                document.getElementById('btn-layer-op3').className = l==='op3' ? 'px-4 py-1.5 rounded-full text-xs font-medium bg-emerald-700 text-white shadow' : 'px-4 py-1.5 rounded-full text-xs font-medium text-slate-400 hover:text-white';
+                this.draw();
+            }
+
+            showLoader(msg) {
+                document.getElementById('process-text').innerText = msg;
+                document.getElementById('processing-overlay').classList.remove('hidden');
+            }
+            hideLoader() {
+                document.getElementById('processing-overlay').classList.add('hidden');
+            }
+            wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+            
+            // Zoom Logic (Keeps map centered)
+            zoomIn() { this.scale *= 1.2; this.draw(); }
+            zoomOut() { this.scale /= 1.2; this.draw(); }
+
+            // --- Coordinate Logic ---
+            getGeoCoords(x, y) {
+                // Simplified projection: Pixel -> Lat/Lng
+                // 1 pixel = 0.00001 deg (approx 1 meter for demo)
+                const lat = this.baseLat + (y * -0.00001);
+                const lng = this.baseLng + (x * 0.00001);
+                return { lat: lat.toFixed(6), lng: lng.toFixed(6) };
+            }
+
+            setupEvents() {
+                window.addEventListener('resize', () => this.resize());
+                
+                // NOTE: Panning (dragging) has been disabled to ensure the map remains fixed.
+                // The mousedown/mousemove logic for translation (this.offsetX/Y) has been removed.
+
+                window.addEventListener('mousemove', e => {
+                    // Hover Calculation only
+                    const rect = this.canvas.getBoundingClientRect();
+                    const mx = (e.clientX - rect.left - this.offsetX) / this.scale;
+                    const my = (e.clientY - rect.top - this.offsetY) / this.scale;
+                    
+                    const geo = this.getGeoCoords(mx, my);
+                    document.getElementById('coord-display').innerText = `LAT: ${geo.lat} | LNG: ${geo.lng}`;
+
+                    // Tooltip Logic
+                    const hoverP = this.patches.find(p => 
+                        mx >= p.x && mx <= p.x + this.patchSize &&
+                        my >= p.y && my <= p.y + this.patchSize
+                    );
+
+                    const tt = document.getElementById('tooltip');
+                    if (hoverP) {
+                        tt.style.display = 'block';
+                        tt.style.left = (e.clientX + 15) + 'px';
+                        tt.style.top = (e.clientY + 15) + 'px';
+                        document.getElementById('tt-id').innerText = hoverP.id;
+                        document.getElementById('tt-loc').innerText = `${geo.lat}, ${geo.lng}`;
+                        
+                        if (this.layer === 'op3' && hoverP.analyzed) {
+                            const deadCount = hoverP.pits.filter(p => !p.alive).length;
+                            document.getElementById('tt-status').innerText = 
+                                `Casualties: ${deadCount} / ${hoverP.pits.length}`;
+                            document.getElementById('tt-status').className = 
+                                deadCount > 5 ? "text-red-400 text-[10px]" : "text-emerald-400 text-[10px]";
+                        } else {
+                             document.getElementById('tt-status').innerText = `Pits: ${hoverP.pits.length}`;
+                             document.getElementById('tt-status').className = "text-blue-400 text-[10px]";
+                        }
+                    } else {
+                        tt.style.display = 'none';
+                    }
+                });
+            }
+
+            export(format) {
+                if(document.getElementById('val-survival').innerText === '--%') {
+                    alert("Please run analysis before exporting.");
+                    return;
+                }
+
+                this.log(`Generating ${format.toUpperCase()} report...`);
+                
+                let content = "";
+                if(format === 'csv') {
+                    content = "PatchID,Latitude,Longitude,Status\n";
+                    this.patches.forEach(p => {
+                        p.pits.forEach(pit => {
+                            if(!pit.alive) {
+                                const geo = this.getGeoCoords(p.x + pit.x, p.y + pit.y);
+                                content += `${p.id},${geo.lat},${geo.lng},Dead_Sapling\n`;
+                            }
+                        });
+                    });
+                } else if(format === 'kml') {
+                    content = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Casualty Report</name>`;
+                    this.patches.forEach(p => {
+                        p.pits.forEach((pit, i) => {
+                            if(!pit.alive) {
+                                const geo = this.getGeoCoords(p.x + pit.x, p.y + pit.y);
+                                content += `
+    <Placemark>
+      <name>${p.id}-${i}</name>
+      <description>Dead Sapling</description>
+      <Point>
+        <coordinates>${geo.lng},${geo.lat},0</coordinates>
+      </Point>
+    </Placemark>`;
+                            }
+                        });
+                    });
+                    content += `
+  </Document>
+</kml>`;
+                }
+
+                const blob = new Blob([content], { type: 'text/plain' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `Casualties_Report.${format}`;
+                a.click();
+                this.log("Download started.", 'success');
+            }
+        }
+
+        const app = new AfforestationApp();
+    </script>
+</body>
+</html>
